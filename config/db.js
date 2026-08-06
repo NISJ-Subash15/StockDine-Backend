@@ -13,13 +13,16 @@ const connectDB = async () => {
         return mongoose.connection;
     }
 
-    const mongoUri = process.env.MONGODB_URI || process.env.MONGO_URI || "mongodb://127.0.0.1:27017/stockdine";
-    if (!process.env.MONGODB_URI && !process.env.MONGO_URI) {
-        console.warn("⚠️ MONGODB_URI not defined in environment! Defaulting to local MongoDB: mongodb://127.0.0.1:27017/stockdine");
+    const mongoUri = process.env.MONGODB_URI || process.env.MONGO_URI;
+    if (!mongoUri) {
+        console.error("\n❌ FATAL ERROR: MONGODB_URI is not defined in backend/.env or Environment Variables!");
+        console.error("💡 Please configure a valid MongoDB Atlas connection string (e.g. MONGODB_URI=mongodb+srv://...) in backend/.env.");
+        console.error("⚠️ Server startup aborted due to missing MongoDB configuration.\n");
+        throw new Error("MONGODB_URI is required. Server startup aborted.");
     }
 
     const maskedUri = mongoUri.replace(/:([^@]+)@/, ":****@");
-    console.log(`🔌 Attempting MongoDB connection to: ${maskedUri}`);
+    console.log(`🔌 Attempting MongoDB Atlas connection to: ${maskedUri}`);
 
     try {
         const conn = await mongoose.connect(mongoUri, {
@@ -27,14 +30,14 @@ const connectDB = async () => {
             connectTimeoutMS: 5000,
             family: 4,
         });
-        console.log(`✅ MongoDB Connected Successfully: ${conn.connection.host}`);
+        console.log(`✅ MongoDB Atlas Connected Successfully: ${conn.connection.host}`);
         return conn;
     } catch (error) {
-        console.error("❌ MongoDB Connection Error:", error.message);
+        console.error("❌ MongoDB Atlas Connection Error:", error.message);
         if (error.message.includes("bad auth")) {
             console.error("💡 Authentication Error: Incorrect username or password in MONGODB_URI.");
         } else {
-            console.error("💡 Hint: Ensure local MongoDB service is running OR 0.0.0.0/0 is added to MongoDB Atlas Network Access!");
+            console.error("💡 Hint: Ensure 0.0.0.0/0 (Allow Anywhere) is added to MongoDB Atlas Network Access!");
         }
         throw error;
     }
