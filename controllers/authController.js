@@ -239,6 +239,7 @@ const restaurantSignup = async (req, res) => {
                 longitude: restaurant.longitude,
                 restaurantLogo: restaurant.restaurantLogo,
                 restaurantCover: restaurant.restaurantCover,
+                adminPasswordProtection: restaurant.adminPasswordProtection !== false,
                 cuisine: restaurant.cuisine,
                 role: "restaurant",
                 createdAt: restaurant.createdAt,
@@ -363,6 +364,7 @@ const login = async (req, res) => {
                         longitude: restaurant.longitude,
                         restaurantLogo: restaurant.restaurantLogo,
                         restaurantCover: restaurant.restaurantCover,
+                        adminPasswordProtection: restaurant.adminPasswordProtection !== false,
                         role: "restaurant",
                     },
                 });
