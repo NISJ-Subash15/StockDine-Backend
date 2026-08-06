@@ -153,12 +153,8 @@ const startServer = async () => {
     }
 
     try {
-        console.log("🔄 Initializing MongoDB connection before starting Express listener...");
-        try {
-            await connectDB();
-        } catch (dbErr) {
-            console.error("⚠️ Initial MongoDB connection attempt failed. Express listener will start in fallback state (serving HTTP 503 for DB endpoints).");
-        }
+        console.log("🔄 Initializing MongoDB Atlas connection before starting server...");
+        await connectDB();
 
         let targetPort = PORT;
         const available = await isPortAvailable(targetPort);
@@ -192,7 +188,9 @@ const startServer = async () => {
 
         return server;
     } catch (err) {
-        console.error("❌ Express Initialization Failed:", err.message || err);
+        console.error("❌ CRITICAL STARTUP FAILURE: Could not connect to MongoDB Atlas or start Express server.");
+        console.error("⛔ Server startup ABORTED:", err.message || err);
+        return null;
     }
 };
 
