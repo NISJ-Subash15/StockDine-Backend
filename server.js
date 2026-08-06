@@ -1,18 +1,17 @@
-const express = require("express");
-const dotenv = require("dotenv");
-const cors = require("cors");
 const path = require("path");
+const dotenv = require("dotenv");
+
+// Execute dotenv.config() BEFORE requiring config/db or routes
+dotenv.config({ path: path.join(__dirname, ".env") });
+if (!process.env.MONGODB_URI) {
+    dotenv.config({ path: path.join(__dirname, "..", ".env") }); // fallback to root .env
+}
+
+const express = require("express");
+const cors = require("cors");
+const mongoose = require("mongoose");
 const connectDB = require("./config/db");
 const { notFound, errorHandler } = require("./middleware/errorMiddleware");
-
-// Process-level unhandled exception / rejection logging
-process.on("uncaughtException", (err) => {
-    console.error("❌ Uncaught Exception:", err.stack || err.message || err);
-});
-
-process.on("unhandledRejection", (reason, promise) => {
-    console.error("❌ Unhandled Rejection at:", promise, "reason:", reason);
-});
 
 // Route imports
 const authRoutes = require("./routes/authRoutes");
@@ -27,11 +26,6 @@ const reviewRoutes = require("./routes/reviewRoutes");
 const adminRoutes = require("./routes/adminRoutes");
 const qrRoutes = require("./routes/qrRoutes");
 const staffRoutes = require("./routes/staffRoutes");
-
-dotenv.config({ path: path.join(__dirname, ".env") });
-if (!process.env.MONGODB_URI) {
-    dotenv.config(); // fallback to root .env if needed
-}
 
 const app = express();
 
@@ -74,6 +68,30 @@ app.use(express.urlencoded({ extended: true }));
 // Static uploads folder
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
+// Health Check Endpoint (does not require DB)
+app.get("/", (req, res) => {
+    res.json({
+        success: true,
+        message: "StockDine Backend Running",
+        version: "1.0.0",
+        databaseStatus: mongoose.connection.readyState === 1 ? "Connected" : "Disconnected",
+        timestamp: new Date(),
+    });
+});
+
+// Database Connection Readiness Middleware (intercepts /api requests if DB is unavailable)
+app.use("/api", (req, res, next) => {
+    if (mongoose.connection.readyState !== 1) {
+        console.warn(`[${new Date().toISOString()}] ⚠️ API Request Blocked: MongoDB state is ${mongoose.connection.readyState} (0=disconnected, 2=connecting, 3=disconnecting)`);
+        return res.status(503).json({
+            success: false,
+            message: "Database connection is currently unavailable or initializing. Please verify MongoDB status and try again.",
+            error: "Service Unavailable (MongoDB Disconnected)",
+        });
+    }
+    next();
+});
+
 // API Route Mounts
 app.use("/api/auth", authRoutes);
 app.use("/api/customers", customerRoutes);
@@ -88,16 +106,6 @@ app.use("/api/reviews", reviewRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/qr", qrRoutes);
 app.use("/api/staff", staffRoutes);
-
-// Health Check Endpoint
-app.get("/", (req, res) => {
-    res.json({
-        success: true,
-        message: "StockDine Backend Running",
-        version: "1.0.0",
-        timestamp: new Date(),
-    });
-});
 
 // Centralized 404 & Error Handling Middlewares
 app.use(notFound);
@@ -143,7 +151,11 @@ const startServer = async () => {
     }
 
     try {
-        await connectDB();
+        try {
+            await connectDB();
+        } catch (dbErr) {
+            console.error("⚠️ Initial MongoDB Connection Attempt Failed. Backend will serve HTTP 503 for DB endpoints until connection restores.");
+        }
 
         let targetPort = PORT;
         const available = await isPortAvailable(targetPort);
