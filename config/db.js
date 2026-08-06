@@ -15,10 +15,18 @@ const connectDB = async () => {
 
     const mongoUri = process.env.MONGODB_URI || process.env.MONGO_URI;
     if (!mongoUri) {
-        console.error("\n❌ FATAL ERROR: MONGODB_URI is not defined in backend/.env or Environment Variables!");
-        console.error("💡 Please configure a valid MongoDB Atlas connection string (e.g. MONGODB_URI=mongodb+srv://...) in backend/.env.");
-        console.error("⚠️ Server startup aborted due to missing MongoDB configuration.\n");
-        throw new Error("MONGODB_URI is required. Server startup aborted.");
+        console.error("\n❌ FATAL STARTUP ERROR: MONGODB_URI is not defined in backend/.env or Environment Variables!");
+        console.error("💡 Please paste your complete MongoDB Atlas connection string into backend/.env:");
+        console.error("   MONGODB_URI=mongodb+srv://<username>:<password>@<your-cluster-name>.mongodb.net/stockdine?retryWrites=true&w=majority");
+        console.error("⛔ Server startup ABORTED.\n");
+        throw new Error("MONGODB_URI is missing from backend/.env. Server startup aborted.");
+    }
+
+    if (mongoUri.includes("<username>") || mongoUri.includes("<password>") || mongoUri.includes("<actual-cluster>")) {
+        console.error("\n❌ FATAL STARTUP ERROR: Placeholder detected in MONGODB_URI connection string!");
+        console.error("💡 Please replace <username>, <password>, and cluster placeholders in backend/.env with actual MongoDB Atlas credentials.");
+        console.error("⛔ Server startup ABORTED.\n");
+        throw new Error("Invalid placeholder in MONGODB_URI. Server startup aborted.");
     }
 
     const maskedUri = mongoUri.replace(/:([^@]+)@/, ":****@");
@@ -33,12 +41,16 @@ const connectDB = async () => {
         console.log(`✅ MongoDB Atlas Connected Successfully: ${conn.connection.host}`);
         return conn;
     } catch (error) {
-        console.error("❌ MongoDB Atlas Connection Error:", error.message);
-        if (error.message.includes("bad auth")) {
+        console.error("\n❌ MongoDB Atlas Connection Error:", error.message);
+        if (error.message.includes("ENOTFOUND")) {
+            console.error("💡 DNS Resolution Error: The cluster hostname in MONGODB_URI was not found.");
+            console.error("   Please verify the full cluster URL from your MongoDB Atlas Dashboard (e.g. cluster0.xxxx.mongodb.net).");
+        } else if (error.message.includes("bad auth")) {
             console.error("💡 Authentication Error: Incorrect username or password in MONGODB_URI.");
         } else {
             console.error("💡 Hint: Ensure 0.0.0.0/0 (Allow Anywhere) is added to MongoDB Atlas Network Access!");
         }
+        console.error("⛔ Server startup ABORTED.\n");
         throw error;
     }
 };
