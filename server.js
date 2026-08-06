@@ -18,6 +18,7 @@ const authRoutes = require("./routes/authRoutes");
 const customerRoutes = require("./routes/customerRoutes");
 const restaurantRoutes = require("./routes/restaurantRoutes");
 const dishRoutes = require("./routes/dishRoutes");
+const menuRoutes = require("./routes/menuRoutes");
 const bookingRoutes = require("./routes/bookingRoutes");
 const tableRoutes = require("./routes/tableRoutes");
 const kitchenRoutes = require("./routes/kitchenRoutes");
@@ -98,6 +99,7 @@ app.use("/api/customers", customerRoutes);
 app.use("/api/restaurants", restaurantRoutes);
 app.use("/api/restaurant", restaurantRoutes); // Alias for legacy/convenience
 app.use("/api/dishes", dishRoutes);
+app.use("/api/menu", menuRoutes);
 app.use("/api/bookings", bookingRoutes);
 app.use("/api/tables", tableRoutes);
 app.use("/api/kitchen", kitchenRoutes);
@@ -151,10 +153,11 @@ const startServer = async () => {
     }
 
     try {
+        console.log("🔄 Initializing MongoDB connection before starting Express listener...");
         try {
             await connectDB();
         } catch (dbErr) {
-            console.error("⚠️ Initial MongoDB Connection Attempt Failed. Backend will serve HTTP 503 for DB endpoints until connection restores.");
+            console.error("⚠️ Initial MongoDB connection attempt failed. Express listener will start in fallback state (serving HTTP 503 for DB endpoints).");
         }
 
         let targetPort = PORT;
