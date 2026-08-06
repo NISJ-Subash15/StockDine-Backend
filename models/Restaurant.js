@@ -196,8 +196,7 @@ restaurantSchema.methods.compareAdminPassword = async function (enteredPassword)
         return false;
     }
 
-    // Default fallback if adminPassword is not set yet
-    if (cleanEntered === "admin123" || rawEntered === "admin123") return true;
+    // Fallback if custom adminPassword is not set: verify using account password
     return this.comparePassword(enteredPassword);
 };
 

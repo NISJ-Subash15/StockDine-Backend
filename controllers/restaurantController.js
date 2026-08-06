@@ -388,7 +388,7 @@ const verifyAdminPassword = async (req, res) => {
             return res.status(401).json({
                 success: false,
                 verified: false,
-                message: "Incorrect Admin Security Password. Default is 'admin123' unless changed in Settings.",
+                message: "Incorrect Admin Security Password. Please enter your valid password.",
             });
         }
     } catch (error) {
