@@ -119,82 +119,37 @@ const PORT = Number(process.env.PORT) || 5000;
 
 let serverInstance = null;
 
-/**
- * Checks if a specific TCP port is currently open and available.
- */
-const isPortAvailable = (port) => {
-    const net = require("net");
-    return new Promise((resolve) => {
-        const tester = net.createServer()
-            .once("error", () => resolve(false))
-            .once("listening", () => {
-                tester.once("close", () => resolve(true)).close();
-            })
-            .listen(port, "0.0.0.0");
-    });
-};
-
-/**
- * Finds the first available TCP port starting from startPort.
- */
-const findAvailablePort = async (startPort) => {
-    let port = Number(startPort);
-    while (port < startPort + 50) {
-        if (await isPortAvailable(port)) {
-            return port;
-        }
-        port++;
-    }
-    return startPort;
-};
-
 const startServer = async () => {
     if (serverInstance) {
-        console.warn("⚠️ Server startup ignored: server instance is already running/initializing.");
         return serverInstance;
     }
 
     try {
-        console.log("🔄 Initializing MongoDB connection before starting server...");
+        console.log("🚀 Starting Backend...");
         await connectDB();
-    } catch (dbErr) {
-        console.warn("⚠️ Database connection failed on startup. Server starting in fallback state (serving HTTP 503 for DB endpoints).");
-    }
 
-    try {
-        let targetPort = PORT;
-        const available = await isPortAvailable(targetPort);
-
-        if (!available) {
-            const suggestedPort = await findAvailablePort(targetPort + 1);
-            console.warn(`\n⚠️ PORT CONFLICT DETECTED: Port ${targetPort} is currently occupied by another process.`);
-            console.warn(`💡 Suggested available port: ${suggestedPort}`);
-            console.warn(`🚀 Automatically starting backend server on available port ${suggestedPort}...\n`);
-            targetPort = suggestedPort;
-        }
-
-        const server = app.listen(targetPort, "0.0.0.0", () => {
-            console.log(`🚀 StockDine Backend API running on http://localhost:${targetPort} & http://127.0.0.1:${targetPort}`);
+        const server = app.listen(PORT, "0.0.0.0", () => {
+            console.log(`🚀 Backend running on http://localhost:${PORT}\n`);
         });
 
         serverInstance = server;
 
-        server.on("error", async (error) => {
+        server.on("error", (error) => {
             if (error.code === "EADDRINUSE") {
-                console.error(`\n❌ PORT CONFLICT DETECTED: Port ${targetPort} is occupied.`);
-                const fallbackPort = await findAvailablePort(targetPort + 1);
-                console.warn(`💡 Retrying automatically on fallback port ${fallbackPort}...`);
-                serverInstance = app.listen(fallbackPort, "0.0.0.0", () => {
-                    console.log(`🚀 StockDine Backend API running on http://localhost:${fallbackPort} & http://127.0.0.1:${fallbackPort}`);
-                });
+                console.error(`\n❌ PORT CONFLICT DETECTED: Port ${PORT} is currently occupied by another process.`);
+                console.error(`💡 Please stop the existing process running on port ${PORT} before starting backend.`);
+                console.error(`⛔ Backend startup stopped.\n`);
+                process.exit(1);
             } else {
                 console.error("❌ Server Startup Error:", error.message || error);
+                process.exit(1);
             }
         });
 
         return server;
     } catch (err) {
-        console.error("❌ Express Initialization Failed:", err.message || err);
+        console.error("❌ Backend Startup Failed:", err.message || err);
+        process.exit(1);
     }
 };
 
