@@ -83,11 +83,13 @@ app.get("/", (req, res) => {
 // Database Connection Readiness Middleware (intercepts /api requests if DB is unavailable)
 app.use("/api", (req, res, next) => {
     if (mongoose.connection.readyState !== 1) {
-        console.warn(`[${new Date().toISOString()}] ⚠️ API Request Blocked: MongoDB state is ${mongoose.connection.readyState} (0=disconnected, 2=connecting, 3=disconnecting)`);
+        const lastErr = typeof connectDB.getLastError === "function" ? connectDB.getLastError() : null;
+        console.warn(`[${new Date().toISOString()}] ⚠️ API Request Intercepted: MongoDB state is ${mongoose.connection.readyState} (0=disconnected, 2=connecting, 3=disconnecting)`);
         return res.status(503).json({
             success: false,
-            message: "Database connection is currently unavailable or initializing. Please verify MongoDB status and try again.",
-            error: "Service Unavailable (MongoDB Disconnected)",
+            message: "Database connection is currently unavailable. Please verify MONGODB_URI connection string in backend/.env.",
+            error: lastErr || "Service Unavailable (MongoDB Disconnected)",
+            databaseState: mongoose.connection.readyState,
         });
     }
     next();
@@ -153,9 +155,13 @@ const startServer = async () => {
     }
 
     try {
-        console.log("🔄 Initializing MongoDB Atlas connection before starting server...");
+        console.log("🔄 Initializing MongoDB connection before starting server...");
         await connectDB();
+    } catch (dbErr) {
+        console.warn("⚠️ Database connection failed on startup. Server starting in fallback state (serving HTTP 503 for DB endpoints).");
+    }
 
+    try {
         let targetPort = PORT;
         const available = await isPortAvailable(targetPort);
 
@@ -188,9 +194,7 @@ const startServer = async () => {
 
         return server;
     } catch (err) {
-        console.error("❌ CRITICAL STARTUP FAILURE: Could not connect to MongoDB Atlas or start Express server.");
-        console.error("⛔ Server startup ABORTED:", err.message || err);
-        return null;
+        console.error("❌ Express Initialization Failed:", err.message || err);
     }
 };
 
