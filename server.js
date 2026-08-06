@@ -136,9 +136,28 @@ const startServer = async () => {
 
         server.on("error", (error) => {
             if (error.code === "EADDRINUSE") {
-                console.error(`\n❌ PORT CONFLICT DETECTED: Port ${PORT} is currently occupied by another process.`);
-                console.error(`💡 Please stop the existing process running on port ${PORT} before starting backend.`);
-                console.error(`⛔ Backend startup stopped.\n`);
+                let occupyingPid = null;
+                try {
+                    const { execSync } = require("child_process");
+                    const netstatOut = execSync(`netstat -ano | findstr :${PORT}`, { encoding: "utf8" });
+                    const lines = netstatOut.trim().split("\n");
+                    for (const line of lines) {
+                        if (line.includes("LISTENING")) {
+                            const parts = line.trim().split(/\s+/);
+                            occupyingPid = parts[parts.length - 1];
+                            break;
+                        }
+                    }
+                } catch (e) {}
+
+                console.error(`\n❌ PORT CONFLICT DETECTED: Port ${PORT} is currently occupied.`);
+                if (occupyingPid) {
+                    console.error(`🔍 Occupying Process PID: ${occupyingPid}`);
+                    console.error(`💡 Solution: Stop process PID ${occupyingPid} using: taskkill /pid ${occupyingPid} /f`);
+                } else {
+                    console.error(`💡 Solution: Please stop the existing process running on port ${PORT} before starting backend.`);
+                }
+                console.error(`⛔ Backend startup stopped (Port ${PORT} is fixed; strictly 1 backend process allowed).\n`);
                 process.exit(1);
             } else {
                 console.error("❌ Server Startup Error:", error.message || error);
