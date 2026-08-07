@@ -110,7 +110,7 @@ const getDishes = async (req, res) => {
             query.portionsLeft = { $gt: 0 };
         }
 
-        const dishes = await Dish.find(query).populate("restaurant", "restaurantName restaurantId address");
+        const dishes = await Dish.find(query).populate("restaurant", "restaurantName restaurantId address city rating cuisine restaurantCover restaurantLogo");
 
         res.json({ success: true, count: dishes.length, dishes: dishes || [] });
     } catch (error) {
