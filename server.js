@@ -25,6 +25,7 @@ const kitchenRoutes = require("./routes/kitchenRoutes");
 const dashboardRoutes = require("./routes/dashboardRoutes");
 const reviewRoutes = require("./routes/reviewRoutes");
 const adminRoutes = require("./routes/adminRoutes");
+const superAdminRoutes = require("./routes/superAdminRoutes");
 const qrRoutes = require("./routes/qrRoutes");
 const staffRoutes = require("./routes/staffRoutes");
 
@@ -108,6 +109,7 @@ app.use("/api/kitchen", kitchenRoutes);
 app.use("/api/dashboard", dashboardRoutes);
 app.use("/api/reviews", reviewRoutes);
 app.use("/api/admin", adminRoutes);
+app.use("/api/superadmin", superAdminRoutes);
 app.use("/api/qr", qrRoutes);
 app.use("/api/staff", staffRoutes);
 

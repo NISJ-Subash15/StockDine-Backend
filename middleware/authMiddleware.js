@@ -64,7 +64,8 @@ const restaurantOnly = (req, res, next) => {
 
 // Ensure authenticated request is Super Admin
 const superAdminOnly = (req, res, next) => {
-    if (req.user && (req.user.role === "superadmin" || req.user.role === "admin")) {
+    const role = req.user?.role;
+    if (role === "superadmin" || role === "super_admin" || role === "admin") {
         next();
     } else {
         return res.status(403).json({ success: false, message: "Access denied. Super Admin privileges required." });
