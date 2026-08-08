@@ -3,8 +3,8 @@ const router = express.Router();
 const { createReview, getRestaurantReviews, replyToReview } = require("../controllers/reviewController");
 const { protect, restaurantOnly } = require("../middleware/authMiddleware");
 
-// Customer rate and review
-router.post("/", createReview);
+// Customer rate and review (Requires Authentication & Completed Booking)
+router.post("/", protect, createReview);
 
 // Get reviews for a restaurant
 router.get("/restaurant/:restaurantId", getRestaurantReviews);

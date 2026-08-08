@@ -37,5 +37,7 @@ router.post("/login", login);
 
 // Profile (Protected)
 router.get("/profile", protect, getProfile);
+router.get("/me", protect, getProfile);
+router.put("/profile", protect, updateCustomerProfile);
 
 module.exports = router;

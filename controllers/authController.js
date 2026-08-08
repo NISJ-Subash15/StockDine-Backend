@@ -440,26 +440,43 @@ const updateCustomerProfile = async (req, res) => {
             return res.status(404).json({ success: false, message: "User not found" });
         }
 
-        if (name) user.name = name;
-        if (mobile) user.mobile = mobile;
-        if (email) user.email = email;
+        if (name !== undefined) {
+            const cleanName = (name || "").toString().trim();
+            if (!cleanName) {
+                return res.status(400).json({ success: false, message: "Name is required and cannot be empty" });
+            }
+            user.name = cleanName;
+        }
+
+        if (mobile !== undefined) {
+            const cleanMobile = (mobile || "").toString().trim();
+            if (cleanMobile) user.mobile = cleanMobile;
+        }
+
+        if (email !== undefined) {
+            user.email = (email || "").toString().trim().toLowerCase();
+        }
 
         await user.save();
+
+        const updatedProfile = {
+            id: user._id,
+            _id: user._id,
+            customerId: user.customerId || `CUST-${user._id.toString().substring(0, 6)}`,
+            name: user.name,
+            mobile: user.mobile,
+            email: user.email || "",
+            role: user.role || "customer",
+            createdAt: user.createdAt,
+            lastLogin: user.lastLogin,
+        };
 
         res.json({
             success: true,
             message: "Profile updated successfully",
-            user: {
-                id: user._id,
-                _id: user._id,
-                customerId: user.customerId,
-                name: user.name,
-                mobile: user.mobile,
-                email: user.email,
-                role: user.role,
-                createdAt: user.createdAt,
-                lastLogin: user.lastLogin,
-            },
+            user: updatedProfile,
+            profile: updatedProfile,
+            customer: updatedProfile,
         });
     } catch (error) {
         console.error("Update Profile Error:", error);
@@ -477,24 +494,33 @@ const getProfile = async (req, res) => {
                 success: true,
                 role: "restaurant",
                 profile: req.restaurant,
+                user: req.restaurant,
             });
         } else if (req.user) {
             const fullUser = await User.findById(req.user._id).populate("favouriteRestaurants");
+            if (!fullUser) {
+                return res.status(404).json({ success: false, message: "User profile not found in database" });
+            }
+
+            const cleanProfile = {
+                id: fullUser._id,
+                _id: fullUser._id,
+                customerId: fullUser.customerId || `CUST-${fullUser._id.toString().substring(0, 6)}`,
+                name: fullUser.name,
+                mobile: fullUser.mobile,
+                email: fullUser.email || "",
+                role: fullUser.role || "customer",
+                createdAt: fullUser.createdAt,
+                lastLogin: fullUser.lastLogin,
+                favouriteRestaurants: fullUser.favouriteRestaurants || [],
+            };
+
             return res.json({
                 success: true,
                 role: fullUser.role || "customer",
-                profile: {
-                    id: fullUser._id,
-                    _id: fullUser._id,
-                    customerId: fullUser.customerId || `CUST-${fullUser._id.toString().substring(0, 6)}`,
-                    name: fullUser.name,
-                    mobile: fullUser.mobile,
-                    email: fullUser.email,
-                    role: fullUser.role,
-                    createdAt: fullUser.createdAt,
-                    lastLogin: fullUser.lastLogin,
-                    favouriteRestaurants: fullUser.favouriteRestaurants || [],
-                },
+                profile: cleanProfile,
+                user: cleanProfile,
+                customer: cleanProfile,
             });
         }
 

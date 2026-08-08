@@ -27,15 +27,15 @@ const protect = async (req, res, next) => {
                 return next();
             }
 
-            return res.status(401).json({ success: false, message: "Not authorized, user/restaurant not found" });
+            return res.status(401).json({ success: false, message: "Authentication required" });
         } catch (error) {
             console.error("Auth Middleware Error:", error.message);
-            return res.status(401).json({ success: false, message: "Not authorized, token invalid or expired" });
+            return res.status(401).json({ success: false, message: "Authentication required" });
         }
     }
 
     if (!token) {
-        return res.status(401).json({ success: false, message: "Not authorized, no token provided" });
+        return res.status(401).json({ success: false, message: "Authentication required" });
     }
 };
 
