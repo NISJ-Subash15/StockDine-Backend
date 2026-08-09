@@ -8,6 +8,9 @@ const {
     login,
     updateCustomerProfile,
     getProfile,
+    forgotPassword,
+    resetPassword,
+    changePassword,
 } = require("../controllers/authController");
 const { protect } = require("../middleware/authMiddleware");
 const { upload } = require("../middleware/uploadMiddleware");
@@ -24,18 +27,33 @@ router.post(
     restaurantSignup
 );
 
-// Customer OTP Auth Routes
+// Legacy Customer OTP Auth Routes (retained for backward compatibility)
 router.post("/customer/send-otp", sendCustomerOTP);
 router.post("/customer/verify-otp", verifyCustomerOTP);
 
-// Customer Signup & Profile Update
+// Customer Signup & Signin
 router.post("/customer/signup", customerSignup);
-router.put("/customer/profile", protect, updateCustomerProfile);
+router.post("/customer/login", login);
+
+// Password Security & Recovery
+router.post("/forgot-password", forgotPassword);
+router.post("/customer/forgot-password", forgotPassword);
+router.post("/reset-password", resetPassword);
+router.post("/customer/reset-password", resetPassword);
+router.post("/change-password", protect, changePassword);
 
 // Unified Login (Restaurant, Customer, Super Admin)
 router.post("/login", login);
 
+// Logout (Public/Protected)
+router.post("/logout", (req, res) => {
+    res.json({ success: true, message: "Logged out successfully" });
+});
+
 // Profile (Protected)
 router.get("/profile", protect, getProfile);
+router.get("/me", protect, getProfile);
+router.put("/profile", protect, updateCustomerProfile);
+router.put("/customer/profile", protect, updateCustomerProfile);
 
 module.exports = router;

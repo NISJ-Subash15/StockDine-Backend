@@ -16,6 +16,7 @@ const userSchema = new mongoose.Schema(
         },
         email: {
             type: String,
+            unique: true,
             sparse: true,
             lowercase: true,
             trim: true,
@@ -23,10 +24,20 @@ const userSchema = new mongoose.Schema(
         password: {
             type: String,
         },
+        avatar: {
+            type: String,
+            default: "",
+        },
         customerId: {
             type: String,
             unique: true,
             sparse: true,
+        },
+        resetPasswordToken: {
+            type: String,
+        },
+        resetPasswordExpires: {
+            type: Date,
         },
         otp: {
             type: String,
@@ -42,7 +53,7 @@ const userSchema = new mongoose.Schema(
         ],
         role: {
             type: String,
-            enum: ["customer", "restaurant", "kitchen", "superadmin"],
+            enum: ["customer", "restaurant", "kitchen", "superadmin", "super_admin"],
             default: "customer",
         },
         lastLogin: {

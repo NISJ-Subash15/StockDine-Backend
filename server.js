@@ -25,8 +25,10 @@ const kitchenRoutes = require("./routes/kitchenRoutes");
 const dashboardRoutes = require("./routes/dashboardRoutes");
 const reviewRoutes = require("./routes/reviewRoutes");
 const adminRoutes = require("./routes/adminRoutes");
+const superAdminRoutes = require("./routes/superAdminRoutes");
 const qrRoutes = require("./routes/qrRoutes");
 const staffRoutes = require("./routes/staffRoutes");
+const searchRoutes = require("./routes/searchRoutes");
 
 const app = express();
 
@@ -108,8 +110,10 @@ app.use("/api/kitchen", kitchenRoutes);
 app.use("/api/dashboard", dashboardRoutes);
 app.use("/api/reviews", reviewRoutes);
 app.use("/api/admin", adminRoutes);
+app.use("/api/superadmin", superAdminRoutes);
 app.use("/api/qr", qrRoutes);
 app.use("/api/staff", staffRoutes);
+app.use("/api/search", searchRoutes);
 
 // Centralized 404 & Error Handling Middlewares
 app.use(notFound);
@@ -149,6 +153,23 @@ const startServer = async () => {
                         }
                     }
                 } catch (e) {}
+
+                if (occupyingPid && String(occupyingPid) !== String(process.pid)) {
+                    console.warn(`\n⚠️ PORT CONFLICT: Port ${PORT} occupied by PID ${occupyingPid}. Automatically clearing orphan process...`);
+                    try {
+                        const { execSync } = require("child_process");
+                        execSync(`taskkill /pid ${occupyingPid} /f`, { stdio: "ignore" });
+                        console.log(`✅ Cleared process PID ${occupyingPid}. Binding to http://localhost:${PORT}...`);
+                        setTimeout(() => {
+                            serverInstance = app.listen(PORT, "0.0.0.0", () => {
+                                console.log(`🚀 Backend running on http://localhost:${PORT}\n`);
+                            });
+                        }, 1000);
+                        return;
+                    } catch (killErr) {
+                        console.error(`⚠️ Failed to auto-kill PID ${occupyingPid}:`, killErr.message);
+                    }
+                }
 
                 console.error(`\n❌ PORT CONFLICT DETECTED: Port ${PORT} is currently occupied.`);
                 if (occupyingPid) {

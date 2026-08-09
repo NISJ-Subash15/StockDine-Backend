@@ -8,8 +8,8 @@ const {
 } = require("../controllers/bookingController");
 const { protect } = require("../middleware/authMiddleware");
 
-// Public / Authenticated booking creation
-router.post("/", createBooking);
+// Authenticated booking / hold table creation
+router.post("/", protect, createBooking);
 
 // Customer bookings
 router.get("/my-bookings", protect, getMyBookings);

@@ -10,8 +10,11 @@ const {
 const { protect, restaurantOnly } = require("../middleware/authMiddleware");
 const { uploadTable } = require("../middleware/uploadMiddleware");
 
+const { createBooking } = require("../controllers/bookingController");
+
 // Public / Protected table listing
 router.get("/", getTables);
+router.post("/hold", protect, createBooking);
 
 // Admin table management
 router.post("/", protect, restaurantOnly, uploadTable.single("image"), addTable);

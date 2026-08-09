@@ -20,7 +20,12 @@ const createBooking = async (req, res) => {
             bookingTime,
         } = req.body;
 
-        if (!restaurantId || !customerName || !bookingDate || !bookingTime) {
+        // Prioritize real authenticated user data from req.user if present
+        const finalCustomerName = (req.user && req.user.name) ? req.user.name : customerName;
+        const finalCustomerPhone = (req.user && req.user.mobile) ? req.user.mobile : (customerPhone || "");
+        const finalCustomerEmail = (req.user && req.user.email) ? req.user.email : (customerEmail || "");
+
+        if (!restaurantId || !finalCustomerName || !bookingDate || !bookingTime) {
             return res.status(400).json({ success: false, message: "Required booking fields missing (restaurantId, customerName, bookingDate, bookingTime)" });
         }
 
@@ -56,7 +61,7 @@ const createBooking = async (req, res) => {
         // Generate unique QR payload string for check-in
         const checkInPayload = JSON.stringify({
             restaurantId,
-            customerName,
+            customerName: finalCustomerName,
             date: bookingDate,
             time: bookingTime,
             timestamp: Date.now(),
@@ -66,9 +71,9 @@ const createBooking = async (req, res) => {
         const qrCodeDataUrl = await QRCode.toDataURL(checkInPayload);
 
         const booking = await Booking.create({
-            customerName,
-            customerEmail: customerEmail || (req.user ? req.user.email : ""),
-            customerPhone: customerPhone || (req.user ? req.user.mobile : ""),
+            customerName: finalCustomerName,
+            customerEmail: finalCustomerEmail,
+            customerPhone: finalCustomerPhone,
             restaurant: restaurantId,
             user: req.user ? req.user._id : null,
             bookedItems: formattedBookedItems,

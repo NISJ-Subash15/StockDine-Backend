@@ -60,6 +60,24 @@ const getRestaurantReviews = async (req, res) => {
     }
 };
 
+// @desc    Get Featured Customer Reviews for Landing Page
+// @route   GET /api/reviews/featured
+// @access  Public
+const getFeaturedReviews = async (req, res) => {
+    try {
+        const reviews = await Review.find()
+            .populate("restaurant", "restaurantName city rating restaurantLogo")
+            .populate("user", "name avatar")
+            .sort({ restaurantRating: -1, createdAt: -1 })
+            .limit(6);
+
+        res.json({ success: true, count: reviews.length, reviews: reviews || [] });
+    } catch (error) {
+        console.error("Get Featured Reviews Error:", error);
+        res.status(500).json({ success: false, message: "Failed to fetch featured reviews" });
+    }
+};
+
 // @desc    Reply to a Review (Restaurant Owner)
 // @route   PATCH /api/reviews/:id/reply
 // @access  Private (Restaurant Admin)
@@ -93,5 +111,6 @@ const replyToReview = async (req, res) => {
 module.exports = {
     createReview,
     getRestaurantReviews,
+    getFeaturedReviews,
     replyToReview,
 };

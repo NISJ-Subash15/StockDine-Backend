@@ -12,7 +12,7 @@ const getAllRestaurants = async (req, res) => {
     try {
         const { search, cuisine, city, state, lat, lng } = req.query;
 
-        let query = { status: "Approved" };
+        let query = { status: { $in: ["Approved", "Active", "active", "approved"] } };
 
         if (search) {
             query.$or = [
@@ -62,7 +62,21 @@ const getAllRestaurants = async (req, res) => {
             }
         }
 
-        res.json({ success: true, count: uniqueRestaurants.length, restaurants: uniqueRestaurants });
+        // Populate live dish counts and available table counts for each restaurant
+        const restaurantsWithCounts = await Promise.all(
+            uniqueRestaurants.map(async (rest) => {
+                const restObj = rest.toObject();
+                const dishCount = await Dish.countDocuments({ restaurant: rest._id, available: true });
+                const tableCount = await Table.countDocuments({ restaurant: rest._id, isBooked: false });
+                return {
+                    ...restObj,
+                    availableDishes: dishCount,
+                    availableTablesCount: tableCount,
+                };
+            })
+        );
+
+        res.json({ success: true, count: restaurantsWithCounts.length, restaurants: restaurantsWithCounts });
     } catch (error) {
         console.error("Get All Restaurants Error:", error);
         res.status(500).json({ success: false, message: "Failed to fetch restaurants" });

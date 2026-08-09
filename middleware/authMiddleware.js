@@ -27,15 +27,15 @@ const protect = async (req, res, next) => {
                 return next();
             }
 
-            return res.status(401).json({ success: false, message: "Not authorized, user/restaurant not found" });
+            return res.status(401).json({ success: false, message: "Authentication required" });
         } catch (error) {
             console.error("Auth Middleware Error:", error.message);
-            return res.status(401).json({ success: false, message: "Not authorized, token invalid or expired" });
+            return res.status(401).json({ success: false, message: "Authentication required" });
         }
     }
 
     if (!token) {
-        return res.status(401).json({ success: false, message: "Not authorized, no token provided" });
+        return res.status(401).json({ success: false, message: "Authentication required" });
     }
 };
 
@@ -64,7 +64,8 @@ const restaurantOnly = (req, res, next) => {
 
 // Ensure authenticated request is Super Admin
 const superAdminOnly = (req, res, next) => {
-    if (req.user && (req.user.role === "superadmin" || req.user.role === "admin")) {
+    const role = req.user?.role;
+    if (role === "superadmin" || role === "super_admin" || role === "admin") {
         next();
     } else {
         return res.status(403).json({ success: false, message: "Access denied. Super Admin privileges required." });

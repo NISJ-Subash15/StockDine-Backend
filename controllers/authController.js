@@ -1,4 +1,5 @@
 const jwt = require("jsonwebtoken");
+const crypto = require("crypto");
 const Restaurant = require("../models/Restaurant");
 const User = require("../models/User");
 const { uploadToCloudinary } = require("../middleware/uploadMiddleware");
@@ -251,36 +252,68 @@ const restaurantSignup = async (req, res) => {
     }
 };
 
-// @desc    Customer Signup
+// @desc    Customer Signup (Email + Password)
 // @route   POST /api/auth/customer/signup
 // @access  Public
 const customerSignup = async (req, res) => {
     try {
-        const { name, email, mobile, password } = req.body;
+        const { name, email, mobile, password, confirmPassword } = req.body;
 
-        if (!name || !mobile) {
-            return res.status(400).json({ success: false, message: "Name and mobile number are required" });
+        const cleanName = (name || "").toString().trim();
+        const finalEmail = (email || "").toString().trim().toLowerCase();
+        const cleanMobile = (mobile || "").toString().trim();
+        const rawPassword = (password || "").toString().trim();
+        const rawConfirmPassword = (confirmPassword || "").toString().trim();
+
+        // 1. Validation
+        if (!cleanName || cleanName.length < 2) {
+            return res.status(400).json({ success: false, message: "Full Name is required and must be at least 2 characters" });
         }
 
-        const cleanMobile = mobile.trim();
-        const finalEmail = email ? email.trim().toLowerCase() : "";
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!finalEmail || !emailRegex.test(finalEmail)) {
+            return res.status(400).json({ success: false, message: "A valid Email address is required" });
+        }
 
-        // Check if customer exists
-        let existingUser = await User.findOne({
-            $or: [{ mobile: cleanMobile }, ...(finalEmail ? [{ email: finalEmail }] : [])],
-        });
+        if (!cleanMobile) {
+            return res.status(400).json({ success: false, message: "Mobile Number is required" });
+        }
 
-        if (existingUser) {
-            return res.status(400).json({ success: false, message: "User with this mobile/email already exists" });
+        if (!rawPassword || rawPassword.length < 6) {
+            return res.status(400).json({ success: false, message: "Password must be at least 6 characters long" });
+        }
+
+        if (rawConfirmPassword && rawPassword !== rawConfirmPassword) {
+            return res.status(400).json({ success: false, message: "Passwords do not match." });
+        }
+
+        // 2. Check existing user by email
+        const existingEmailUser = await User.findOne({ email: finalEmail });
+        if (existingEmailUser) {
+            return res.status(409).json({
+                success: false,
+                message: "An account with this email already exists. Please sign in.",
+            });
+        }
+
+        // 3. Check existing user by mobile
+        if (cleanMobile) {
+            const existingMobileUser = await User.findOne({ mobile: cleanMobile });
+            if (existingMobileUser) {
+                return res.status(400).json({
+                    success: false,
+                    message: "An account with this mobile number already exists. Please sign in.",
+                });
+            }
         }
 
         const customerId = generateCustomerId();
 
         const user = await User.create({
-            name,
+            name: cleanName,
             email: finalEmail,
             mobile: cleanMobile,
-            password,
+            password: rawPassword,
             customerId,
             role: "customer",
             favouriteRestaurants: [],
@@ -291,7 +324,7 @@ const customerSignup = async (req, res) => {
 
         res.status(201).json({
             success: true,
-            message: "Customer registered successfully",
+            message: "Account created successfully",
             token,
             user: {
                 id: user._id,
@@ -301,12 +334,20 @@ const customerSignup = async (req, res) => {
                 email: user.email,
                 mobile: user.mobile,
                 role: user.role,
+                avatar: user.avatar || "",
                 createdAt: user.createdAt,
+                updatedAt: user.updatedAt,
             },
         });
     } catch (error) {
         console.error("❌ Customer Signup Error:", error);
-        res.status(500).json({ success: false, message: error.message || "Server Error" });
+        if (error.code === 11000) {
+            return res.status(409).json({
+                success: false,
+                message: "An account with this email or mobile already exists. Please sign in.",
+            });
+        }
+        res.status(500).json({ success: false, message: error.message || "Server Error during signup" });
     }
 };
 
@@ -406,18 +447,20 @@ const login = async (req, res) => {
                         email: user.email,
                         mobile: user.mobile,
                         role: user.role,
+                        avatar: user.avatar || "",
                         createdAt: user.createdAt,
+                        updatedAt: user.updatedAt,
                         lastLogin: user.lastLogin,
                     },
                 });
             } else {
                 console.warn(`❌ User Login Failed: Password mismatch for ${rawIdentifier}`);
-                return res.status(401).json({ success: false, message: "Incorrect password entered. Please verify your password and try again." });
+                return res.status(401).json({ success: false, message: "Invalid email or password." });
             }
         }
 
         console.warn(`❌ Login Failed: No account found in MongoDB for ${rawIdentifier}`);
-        return res.status(404).json({ success: false, message: "No registered account found with this Email or Mobile. Please Sign Up first." });
+        return res.status(401).json({ success: false, message: "Invalid email or password." });
     } catch (error) {
         console.error("❌ Login Server Error:", error);
         res.status(500).json({ success: false, message: error.message || "Server Error during login" });
@@ -425,7 +468,7 @@ const login = async (req, res) => {
 };
 
 // @desc    Update Customer Profile
-// @route   PUT /api/auth/customer/profile
+// @route   PUT /api/auth/customer/profile, PUT /api/auth/profile
 // @access  Private
 const updateCustomerProfile = async (req, res) => {
     try {
@@ -433,33 +476,64 @@ const updateCustomerProfile = async (req, res) => {
             return res.status(401).json({ success: false, message: "Unauthorized" });
         }
 
-        const { name, mobile, email } = req.body;
+        const { name, mobile, email, avatar, profilePhoto } = req.body;
+        // Always use authenticated user ID from JWT token
         const user = await User.findById(req.user._id);
 
         if (!user) {
             return res.status(404).json({ success: false, message: "User not found" });
         }
 
-        if (name) user.name = name;
-        if (mobile) user.mobile = mobile;
-        if (email) user.email = email;
+        if (name !== undefined) {
+            const cleanName = (name || "").toString().trim();
+            if (!cleanName || cleanName.length < 2) {
+                return res.status(400).json({ success: false, message: "Full Name is required and must be at least 2 characters" });
+            }
+            user.name = cleanName;
+        }
+
+        if (mobile !== undefined) {
+            const cleanMobile = (mobile || "").toString().trim();
+            if (cleanMobile) user.mobile = cleanMobile;
+        }
+
+        if (avatar !== undefined || profilePhoto !== undefined) {
+            user.avatar = (avatar || profilePhoto || "").toString().trim();
+        }
+
+        if (email !== undefined) {
+            const cleanEmail = (email || "").toString().trim().toLowerCase();
+            if (cleanEmail && cleanEmail !== user.email) {
+                const existing = await User.findOne({ email: cleanEmail });
+                if (existing) {
+                    return res.status(409).json({ success: false, message: "Email is already taken by another account" });
+                }
+                user.email = cleanEmail;
+            }
+        }
 
         await user.save();
+
+        const updatedProfile = {
+            id: user._id,
+            _id: user._id,
+            customerId: user.customerId || `CUST-${user._id.toString().substring(0, 6)}`,
+            name: user.name,
+            mobile: user.mobile,
+            email: user.email || "",
+            role: user.role || "customer",
+            avatar: user.avatar || "",
+            createdAt: user.createdAt,
+            updatedAt: user.updatedAt,
+            lastLogin: user.lastLogin,
+        };
 
         res.json({
             success: true,
             message: "Profile updated successfully",
-            user: {
-                id: user._id,
-                _id: user._id,
-                customerId: user.customerId,
-                name: user.name,
-                mobile: user.mobile,
-                email: user.email,
-                role: user.role,
-                createdAt: user.createdAt,
-                lastLogin: user.lastLogin,
-            },
+            user: updatedProfile,
+            profile: updatedProfile,
+            customer: updatedProfile,
         });
     } catch (error) {
         console.error("Update Profile Error:", error);
@@ -477,24 +551,35 @@ const getProfile = async (req, res) => {
                 success: true,
                 role: "restaurant",
                 profile: req.restaurant,
+                user: req.restaurant,
             });
         } else if (req.user) {
-            const fullUser = await User.findById(req.user._id).populate("favouriteRestaurants");
+            const fullUser = await User.findById(req.user._id).select("-password").populate("favouriteRestaurants");
+            if (!fullUser) {
+                return res.status(404).json({ success: false, message: "User profile not found in database" });
+            }
+
+            const cleanProfile = {
+                id: fullUser._id,
+                _id: fullUser._id,
+                customerId: fullUser.customerId || `CUST-${fullUser._id.toString().substring(0, 6)}`,
+                name: fullUser.name,
+                mobile: fullUser.mobile,
+                email: fullUser.email || "",
+                role: fullUser.role || "customer",
+                avatar: fullUser.avatar || "",
+                createdAt: fullUser.createdAt,
+                updatedAt: fullUser.updatedAt,
+                lastLogin: fullUser.lastLogin,
+                favouriteRestaurants: fullUser.favouriteRestaurants || [],
+            };
+
             return res.json({
                 success: true,
                 role: fullUser.role || "customer",
-                profile: {
-                    id: fullUser._id,
-                    _id: fullUser._id,
-                    customerId: fullUser.customerId || `CUST-${fullUser._id.toString().substring(0, 6)}`,
-                    name: fullUser.name,
-                    mobile: fullUser.mobile,
-                    email: fullUser.email,
-                    role: fullUser.role,
-                    createdAt: fullUser.createdAt,
-                    lastLogin: fullUser.lastLogin,
-                    favouriteRestaurants: fullUser.favouriteRestaurants || [],
-                },
+                profile: cleanProfile,
+                user: cleanProfile,
+                customer: cleanProfile,
             });
         }
 
@@ -502,6 +587,148 @@ const getProfile = async (req, res) => {
     } catch (error) {
         console.error("Get Profile Error:", error);
         res.status(500).json({ success: false, message: "Server Error" });
+    }
+};
+
+// @desc    Forgot Password - Generate Reset Token
+// @route   POST /api/auth/forgot-password
+// @access  Public
+const forgotPassword = async (req, res) => {
+    try {
+        const { email } = req.body;
+        const cleanEmail = (email || "").toString().trim().toLowerCase();
+
+        if (!cleanEmail) {
+            return res.status(400).json({ success: false, message: "Email address is required" });
+        }
+
+        const user = await User.findOne({ email: cleanEmail });
+
+        if (!user) {
+            // Return enumeration-safe response
+            return res.json({
+                success: true,
+                message: "If an account with that email exists, password reset instructions have been sent.",
+            });
+        }
+
+        // Generate unhashed reset token
+        const resetToken = crypto.randomBytes(32).toString("hex");
+
+        // Hash token and store in DB
+        user.resetPasswordToken = crypto.createHash("sha256").update(resetToken).digest("hex");
+        user.resetPasswordExpires = Date.now() + 60 * 60 * 1000; // 1 hour expiry
+
+        await user.save();
+
+        console.log(`🔑 Password Reset Token generated for ${cleanEmail}: ${resetToken}`);
+
+        res.json({
+            success: true,
+            message: "If an account with that email exists, password reset instructions have been sent.",
+            resetToken: resetToken, // Returned for dev testing when SMTP is unconfigured
+        });
+    } catch (error) {
+        console.error("Forgot Password Error:", error);
+        res.status(500).json({ success: false, message: error.message || "Server Error" });
+    }
+};
+
+// @desc    Reset Password using Token
+// @route   POST /api/auth/reset-password
+// @access  Public
+const resetPassword = async (req, res) => {
+    try {
+        const { token, resetToken, newPassword, password, confirmPassword } = req.body;
+        const rawToken = (token || resetToken || "").toString().trim();
+        const rawPassword = (newPassword || password || "").toString().trim();
+        const rawConfirm = (confirmPassword || "").toString().trim();
+
+        if (!rawToken) {
+            return res.status(400).json({ success: false, message: "Reset token is required" });
+        }
+
+        if (!rawPassword || rawPassword.length < 6) {
+            return res.status(400).json({ success: false, message: "New password must be at least 6 characters long" });
+        }
+
+        if (rawConfirm && rawPassword !== rawConfirm) {
+            return res.status(400).json({ success: false, message: "Passwords do not match." });
+        }
+
+        const hashedToken = crypto.createHash("sha256").update(rawToken).digest("hex");
+
+        const user = await User.findOne({
+            $or: [{ resetPasswordToken: hashedToken }, { resetPasswordToken: rawToken }],
+            resetPasswordExpires: { $gt: Date.now() },
+        });
+
+        if (!user) {
+            return res.status(400).json({ success: false, message: "Password reset token is invalid or has expired." });
+        }
+
+        user.password = rawPassword;
+        user.resetPasswordToken = undefined;
+        user.resetPasswordExpires = undefined;
+
+        await user.save();
+
+        res.json({
+            success: true,
+            message: "Password reset successfully. You can now sign in with your new password.",
+        });
+    } catch (error) {
+        console.error("Reset Password Error:", error);
+        res.status(500).json({ success: false, message: error.message || "Server Error" });
+    }
+};
+
+// @desc    Change Password (Authenticated User)
+// @route   POST /api/auth/change-password
+// @access  Private
+const changePassword = async (req, res) => {
+    try {
+        if (!req.user) {
+            return res.status(401).json({ success: false, message: "Unauthorized" });
+        }
+
+        const { currentPassword, newPassword, confirmPassword } = req.body;
+        const rawCurrent = (currentPassword || "").toString().trim();
+        const rawNew = (newPassword || "").toString().trim();
+        const rawConfirm = (confirmPassword || "").toString().trim();
+
+        if (!rawCurrent || !rawNew) {
+            return res.status(400).json({ success: false, message: "Current password and new password are required" });
+        }
+
+        if (rawNew.length < 6) {
+            return res.status(400).json({ success: false, message: "New password must be at least 6 characters long" });
+        }
+
+        if (rawConfirm && rawNew !== rawConfirm) {
+            return res.status(400).json({ success: false, message: "Passwords do not match." });
+        }
+
+        const user = await User.findById(req.user._id);
+        if (!user) {
+            return res.status(404).json({ success: false, message: "User not found" });
+        }
+
+        const isMatch = await user.comparePassword(rawCurrent);
+        if (!isMatch) {
+            return res.status(400).json({ success: false, message: "Current password entered is incorrect." });
+        }
+
+        user.password = rawNew;
+        await user.save();
+
+        res.json({
+            success: true,
+            message: "Password updated successfully",
+        });
+    } catch (error) {
+        console.error("Change Password Error:", error);
+        res.status(500).json({ success: false, message: error.message || "Failed to change password" });
     }
 };
 
@@ -513,4 +740,7 @@ module.exports = {
     login,
     updateCustomerProfile,
     getProfile,
+    forgotPassword,
+    resetPassword,
+    changePassword,
 };
