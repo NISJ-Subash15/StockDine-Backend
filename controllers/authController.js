@@ -477,8 +477,14 @@ const updateCustomerProfile = async (req, res) => {
         }
 
         const { name, mobile, email, avatar, profilePhoto } = req.body;
-        // Always use authenticated user ID from JWT token
-        const user = await User.findById(req.user._id);
+        const userId = req.user._id || req.user.id || (typeof req.user === "string" ? req.user : null);
+        let user = userId ? await User.findById(userId) : null;
+        if (!user && userId) {
+            user = await Restaurant.findById(userId);
+        }
+        if (!user && req.user && typeof req.user === "object" && req.user.save) {
+            user = req.user;
+        }
 
         if (!user) {
             return res.status(404).json({ success: false, message: "User not found" });
@@ -709,7 +715,15 @@ const changePassword = async (req, res) => {
             return res.status(400).json({ success: false, message: "Passwords do not match." });
         }
 
-        const user = await User.findById(req.user._id);
+        const userId = req.user._id || req.user.id || (typeof req.user === "string" ? req.user : null);
+        let user = userId ? await User.findById(userId) : null;
+        if (!user && userId) {
+            user = await Restaurant.findById(userId);
+        }
+        if (!user && req.user && typeof req.user === "object" && req.user.save) {
+            user = req.user;
+        }
+
         if (!user) {
             return res.status(404).json({ success: false, message: "User not found" });
         }
