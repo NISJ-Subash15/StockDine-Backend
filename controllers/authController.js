@@ -560,20 +560,28 @@ const getProfile = async (req, res) => {
                 user: req.restaurant,
             });
         } else if (req.user) {
-            const fullUser = await User.findById(req.user._id).select("-password").populate("favouriteRestaurants");
+            const userId = req.user._id || req.user.id || (typeof req.user === "string" ? req.user : null);
+            let fullUser = userId ? await User.findById(userId).select("-password").populate("favouriteRestaurants") : null;
+            if (!fullUser && userId) {
+                fullUser = await Restaurant.findById(userId).select("-password");
+            }
+            if (!fullUser && req.user && req.user.email) {
+                fullUser = req.user;
+            }
+
             if (!fullUser) {
                 return res.status(404).json({ success: false, message: "User profile not found in database" });
             }
 
             const cleanProfile = {
-                id: fullUser._id,
-                _id: fullUser._id,
-                customerId: fullUser.customerId || `CUST-${fullUser._id.toString().substring(0, 6)}`,
-                name: fullUser.name,
-                mobile: fullUser.mobile,
+                id: fullUser._id || fullUser.id,
+                _id: fullUser._id || fullUser.id,
+                customerId: fullUser.customerId || `CUST-${(fullUser._id || "").toString().substring(0, 6)}`,
+                name: fullUser.name || fullUser.restaurantName || "Customer",
+                mobile: fullUser.mobile || fullUser.mobileNumber || "",
                 email: fullUser.email || "",
                 role: fullUser.role || "customer",
-                avatar: fullUser.avatar || "",
+                avatar: fullUser.avatar || fullUser.restaurantLogo || "",
                 createdAt: fullUser.createdAt,
                 updatedAt: fullUser.updatedAt,
                 lastLogin: fullUser.lastLogin,
@@ -582,7 +590,7 @@ const getProfile = async (req, res) => {
 
             return res.json({
                 success: true,
-                role: fullUser.role || "customer",
+                role: cleanProfile.role,
                 profile: cleanProfile,
                 user: cleanProfile,
                 customer: cleanProfile,
