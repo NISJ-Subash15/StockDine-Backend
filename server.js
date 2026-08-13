@@ -75,6 +75,7 @@ const corsOptions = {
 };
 
 app.use(cors(corsOptions));
+app.options("*", cors(corsOptions));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
@@ -107,15 +108,18 @@ app.use("/api", (req, res, next) => {
     next();
 });
 
-// API Route Mounts
+// API Route Mounts (Primary & Compatibility Aliases)
 app.use("/api/auth", authRoutes);
+app.use("/api/login", authRoutes);
 app.use("/api/customers", customerRoutes);
+app.use("/api/customer", customerRoutes);
 app.use("/api/restaurants", restaurantRoutes);
 app.use("/api/restaurant", restaurantRoutes);
 app.use("/api/dishes", dishRoutes);
 app.use("/api/menu", menuRoutes);
 app.use("/api/bookings", bookingRoutes);
 app.use("/api/tables", tableRoutes);
+app.use("/api/table", tableRoutes);
 app.use("/api/kitchen", kitchenRoutes);
 app.use("/api/dashboard", dashboardRoutes);
 app.use("/api/reviews", reviewRoutes);
