@@ -351,25 +351,70 @@ const customerSignup = async (req, res) => {
     }
 };
 
-// @desc    Unified Login (Restaurant, Customer, Super Admin)
-// @route   POST /api/auth/login
+// @desc    Unified Single Platform Login (Customer, Restaurant Admin, Kitchen Staff, Super Admin)
+// @route   POST /api/auth/login, POST /api/auth/customer/login
 // @access  Public
 const login = async (req, res) => {
     try {
-        const { email, password, mobile, phone, username, user: inputUser, restUser } = req.body;
-        const rawIdentifier = (email || mobile || phone || username || inputUser || restUser || "").toString().trim();
+        const { email, password, mobile, phone, username, identifier, user: inputUser, restUser } = req.body;
+        const rawIdentifier = (email || mobile || phone || username || identifier || inputUser || restUser || "").toString().trim();
         const rawPassword = (password || "").toString().trim();
 
         if (!rawIdentifier || !rawPassword) {
-            console.warn("⚠️ Login Attempt Failed: Missing email/mobile or password");
-            return res.status(400).json({ success: false, message: "Please provide Email/Mobile and Password" });
+            console.warn("⚠️ Login Attempt Failed: Missing identifier or password");
+            return res.status(400).json({ success: false, message: "Please provide Email/Mobile and Password." });
         }
 
         const query = rawIdentifier.toLowerCase();
         const digitsOnly = rawIdentifier.replace(/\D/g, "");
         const last10Digits = digitsOnly.length >= 7 ? digitsOnly.slice(-10) : "";
 
-        // Build flexible conditions for Restaurant search in MongoDB
+        // 1. Check User Collection in MongoDB (Customer / Super Admin)
+        let userConditions = [
+            { email: query },
+            { mobile: rawIdentifier },
+            { customerId: rawIdentifier },
+        ];
+        if (last10Digits) {
+            userConditions.push({ mobile: { $regex: last10Digits } });
+        }
+
+        let user = await User.findOne({ $or: userConditions });
+
+        if (user) {
+            const isMatch = await user.comparePassword(rawPassword);
+            if (isMatch) {
+                user.lastLogin = new Date();
+                await user.save();
+
+                let normalizedRole = (user.role || "customer").toLowerCase();
+                if (normalizedRole === "superadmin") normalizedRole = "super_admin";
+
+                const token = generateToken(user._id);
+                console.log(`✅ User Login Successful (${normalizedRole}): ${user.email || user.mobile} in MongoDB`);
+
+                return res.json({
+                    success: true,
+                    token,
+                    role: normalizedRole,
+                    user: {
+                        id: user._id,
+                        _id: user._id,
+                        customerId: user.customerId || `CUST-${user._id.toString().substring(0, 6)}`,
+                        name: user.name,
+                        email: user.email || "",
+                        mobile: user.mobile || "",
+                        role: normalizedRole,
+                        avatar: user.avatar || "",
+                        createdAt: user.createdAt,
+                        updatedAt: user.updatedAt,
+                        lastLogin: user.lastLogin,
+                    },
+                });
+            }
+        }
+
+        // 2. Check Restaurant Collection in MongoDB (Restaurant Admin)
         let restConditions = [
             { email: query },
             { mobileNumber: rawIdentifier },
@@ -380,18 +425,20 @@ const login = async (req, res) => {
             restConditions.push({ mobileNumber: { $regex: last10Digits } });
         }
 
-        // 1. Check Restaurant collection in MongoDB
         let restaurant = await Restaurant.findOne({ $or: restConditions });
 
         if (restaurant) {
             const isMatch = await restaurant.comparePassword(rawPassword);
             if (isMatch) {
-                console.log(`✅ Restaurant Login Successful: Found ${restaurant.email} (${restaurant.restaurantName}) in MongoDB`);
+                console.log(`✅ Restaurant Admin Login Successful: Found ${restaurant.email} (${restaurant.restaurantName}) in MongoDB`);
                 const token = generateToken(restaurant._id);
+                const role = "restaurant_admin";
+
                 return res.json({
                     success: true,
                     token,
-                    role: "restaurant",
+                    role,
+                    workspaces: ["admin", "kitchen"],
                     user: {
                         id: restaurant._id,
                         _id: restaurant._id,
@@ -406,64 +453,67 @@ const login = async (req, res) => {
                         restaurantLogo: restaurant.restaurantLogo,
                         restaurantCover: restaurant.restaurantCover,
                         adminPasswordProtection: restaurant.adminPasswordProtection !== false,
-                        role: "restaurant",
+                        role,
                     },
                 });
-            } else {
-                console.warn(`❌ Restaurant Login Failed: Password mismatch for ${rawIdentifier}`);
-                return res.status(401).json({ success: false, message: "Incorrect password entered. Please verify your password and try again." });
             }
         }
 
-        // Build flexible conditions for User search in MongoDB
-        let userConditions = [
-            { email: query },
-            { mobile: rawIdentifier },
-            { customerId: rawIdentifier },
-        ];
-        if (last10Digits) {
-            userConditions.push({ mobile: { $regex: last10Digits } });
-        }
-
-        // 2. Check User collection in MongoDB (Customer / Super Admin)
-        let user = await User.findOne({ $or: userConditions });
-
-        if (user) {
-            const isMatch = await user.comparePassword(rawPassword);
-            if (isMatch) {
-                user.lastLogin = new Date();
-                await user.save();
-                console.log(`✅ User Login Successful: Found ${user.email || user.mobile} in MongoDB`);
-                const token = generateToken(user._id);
-                return res.json({
-                    success: true,
-                    token,
-                    role: user.role,
-                    user: {
-                        id: user._id,
-                        _id: user._id,
-                        customerId: user.customerId || `CUST-${user._id.toString().substring(0, 6)}`,
-                        name: user.name,
-                        email: user.email,
-                        mobile: user.mobile,
-                        role: user.role,
-                        avatar: user.avatar || "",
-                        createdAt: user.createdAt,
-                        updatedAt: user.updatedAt,
-                        lastLogin: user.lastLogin,
-                    },
-                });
-            } else {
-                console.warn(`❌ User Login Failed: Password mismatch for ${rawIdentifier}`);
-                return res.status(401).json({ success: false, message: "Invalid email or password." });
+        // 3. Check Staff Collection in MongoDB (Kitchen Staff / Manager / Waiter)
+        try {
+            const Staff = require("../models/Staff");
+            let staffConditions = [
+                { email: query },
+                { mobile: rawIdentifier },
+            ];
+            if (last10Digits) {
+                staffConditions.push({ mobile: { $regex: last10Digits } });
             }
+
+            let staff = await Staff.findOne({ $or: staffConditions }).populate("restaurant");
+            if (staff && staff.password) {
+                const bcrypt = require("bcrypt");
+                let isMatch = staff.password === rawPassword || staff.password === rawPassword.trim();
+                if (!isMatch && (staff.password.startsWith("$2a$") || staff.password.startsWith("$2b$"))) {
+                    isMatch = await bcrypt.compare(rawPassword, staff.password).catch(() => false);
+                }
+
+                if (isMatch && staff.status !== "Disabled") {
+                    console.log(`✅ Staff Login Successful (${staff.role}): ${staff.name} in MongoDB`);
+                    const token = generateToken(staff._id);
+                    let staffRole = "kitchen";
+                    if (staff.role === "Manager") staffRole = "restaurant_admin";
+                    else if (staff.role === "Cashier" || staff.role === "Waiter") staffRole = "restaurant_member";
+
+                    const workspaces = staffRole === "kitchen" ? ["kitchen"] : ["admin", "kitchen"];
+
+                    return res.json({
+                        success: true,
+                        token,
+                        role: staffRole,
+                        workspaces,
+                        user: {
+                            id: staff._id,
+                            _id: staff._id,
+                            name: staff.name,
+                            email: staff.email || "",
+                            mobile: staff.mobile,
+                            role: staffRole,
+                            restaurantId: staff.restaurant?._id || staff.restaurant,
+                            restaurantName: staff.restaurant?.restaurantName || "",
+                        },
+                    });
+                }
+            }
+        } catch (staffErr) {
+            console.warn("Staff lookup error:", staffErr.message);
         }
 
-        console.warn(`❌ Login Failed: No account found in MongoDB for ${rawIdentifier}`);
+        console.warn(`❌ Unified Login Failed: Invalid credentials for ${rawIdentifier}`);
         return res.status(401).json({ success: false, message: "Invalid email or password." });
     } catch (error) {
-        console.error("❌ Login Server Error:", error);
-        res.status(500).json({ success: false, message: error.message || "Server Error during login" });
+        console.error("❌ Unified Login Server Error:", error);
+        res.status(500).json({ success: false, message: "Unable to sign in right now. Please try again." });
     }
 };
 
