@@ -2,6 +2,10 @@ const mongoose = require("mongoose");
 
 const bookingSchema = new mongoose.Schema(
     {
+        bookingId: {
+            type: String,
+            trim: true,
+        },
         customerName: {
             type: String,
             required: [true, "Customer Name is required"],
@@ -18,7 +22,16 @@ const bookingSchema = new mongoose.Schema(
         restaurant: {
             type: mongoose.Schema.Types.ObjectId,
             ref: "Restaurant",
-            required: true,
+            required: false,
+        },
+        restaurantName: {
+            type: String,
+            default: "Partner Restaurant",
+            trim: true,
+        },
+        restaurantId: {
+            type: String,
+            trim: true,
         },
         user: {
             type: mongoose.Schema.Types.ObjectId,
@@ -29,12 +42,17 @@ const bookingSchema = new mongoose.Schema(
                 dish: {
                     type: mongoose.Schema.Types.ObjectId,
                     ref: "Dish",
+                    required: false,
                 },
                 dishName: { type: String, required: true },
                 quantity: { type: Number, required: true, min: 1 },
                 price: { type: Number, required: true, min: 0 },
             },
         ],
+        tableId: {
+            type: String,
+            trim: true,
+        },
         tableNumber: {
             type: String,
             default: "TBD",
@@ -56,14 +74,20 @@ const bookingSchema = new mongoose.Schema(
             type: Number,
             default: 0,
         },
+        advanceAmount: {
+            type: Number,
+            default: 0,
+        },
+        remainingAmount: {
+            type: Number,
+            default: 0,
+        },
         paymentStatus: {
             type: String,
-            enum: ["Pending", "Paid", "Failed"],
             default: "Pending",
         },
         bookingStatus: {
             type: String,
-            enum: ["Pending", "Confirmed", "Preparing", "Ready", "Served", "Cancelled", "Completed"],
             default: "Confirmed",
         },
         qrCode: {

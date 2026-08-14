@@ -1,7 +1,17 @@
-const Booking = require("../models/Booking");
-const Dish = require("../models/Dish");
-const Table = require("../models/Table");
-const QRCode = require("qrcode");
+const Restaurant = require("../models/Restaurant");
+const mongoose = require("mongoose");
+
+// Helper to resolve Restaurant ObjectId
+const resolveRestaurantId = async (input) => {
+    if (!input) return null;
+    if (mongoose.Types.ObjectId.isValid(input)) {
+        const found = await Restaurant.findById(input);
+        if (found) return found._id;
+    }
+    const foundByCode = await Restaurant.findOne({ restaurantId: input });
+    if (foundByCode) return foundByCode._id;
+    return null;
+};
 
 // @desc    Create a new booking (Table + Food Reservation)
 // @route   POST /api/bookings
@@ -13,79 +23,113 @@ const createBooking = async (req, res) => {
             customerEmail,
             customerPhone,
             restaurantId,
+            restaurantName,
             bookedItems,
+            items,
+            tableId,
             tableNumber,
             guests,
             bookingDate,
             bookingTime,
+            date,
+            time,
+            totalAmount: inputTotalAmount,
+            advanceAmount: inputAdvanceAmount,
         } = req.body;
 
-        // Prioritize real authenticated user data from req.user if present
-        const finalCustomerName = (req.user && req.user.name) ? req.user.name : customerName;
+        const finalCustomerName = (req.user && req.user.name) ? req.user.name : (customerName || "StockDine Diner");
         const finalCustomerPhone = (req.user && req.user.mobile) ? req.user.mobile : (customerPhone || "");
         const finalCustomerEmail = (req.user && req.user.email) ? req.user.email : (customerEmail || "");
+        const finalDate = bookingDate || date;
+        const finalTime = bookingTime || time;
+        const rawRestId = restaurantId || req.body.restaurant;
 
-        if (!restaurantId || !finalCustomerName || !bookingDate || !bookingTime) {
-            return res.status(400).json({ success: false, message: "Required booking fields missing (restaurantId, customerName, bookingDate, bookingTime)" });
+        if (!rawRestId || !finalCustomerName || !finalDate || !finalTime) {
+            return res.status(400).json({
+                success: false,
+                message: "Required booking fields missing (restaurantId, customerName, date/bookingDate, time/bookingTime)",
+            });
         }
 
-        let totalAmount = 0;
+        const validRestId = await resolveRestaurantId(rawRestId);
+        let finalRestaurantName = restaurantName || "StockDine Partner Venue";
+        if (validRestId) {
+            const rest = await Restaurant.findById(validRestId);
+            if (rest) finalRestaurantName = rest.restaurantName;
+        }
+
+        const itemsToProcess = bookedItems || items || [];
+        let calculatedTotalAmount = 0;
         let formattedBookedItems = [];
 
-        // Calculate total amount & deduct dish portions
-        if (bookedItems && Array.isArray(bookedItems) && bookedItems.length > 0) {
-            for (const item of bookedItems) {
+        if (Array.isArray(itemsToProcess) && itemsToProcess.length > 0) {
+            for (const item of itemsToProcess) {
                 const dishId = item.dishId || item.dish || item._id;
-                const dish = await Dish.findById(dishId);
-                if (dish) {
-                    const qty = item.quantity || 1;
-                    totalAmount += dish.price * qty;
-
-                    // Deduct portion left
-                    dish.portionsLeft = Math.max(0, dish.portionsLeft - qty);
-                    if (dish.portionsLeft === 0) {
-                        dish.available = false;
-                    }
-                    await dish.save();
-
-                    formattedBookedItems.push({
-                        dish: dish._id,
-                        dishName: dish.dishName,
-                        quantity: qty,
-                        price: dish.price,
-                    });
+                let dish = null;
+                if (dishId && mongoose.Types.ObjectId.isValid(dishId)) {
+                    dish = await Dish.findById(dishId);
                 }
+
+                const qty = item.quantity || 1;
+                const itemPrice = item.price || (dish ? dish.price : 0);
+                calculatedTotalAmount += itemPrice * qty;
+
+                if (dish) {
+                    dish.portionsLeft = Math.max(0, dish.portionsLeft - qty);
+                    if (dish.portionsLeft === 0) dish.available = false;
+                    await dish.save();
+                }
+
+                formattedBookedItems.push({
+                    dish: dish ? dish._id : null,
+                    dishName: item.dishName || item.name || (dish ? dish.dishName : "Food Item"),
+                    quantity: qty,
+                    price: itemPrice,
+                });
             }
         }
 
-        // Generate unique QR payload string for check-in
+        const finalTotalAmount = (inputTotalAmount !== undefined && inputTotalAmount > 0) ? parseFloat(inputTotalAmount) : calculatedTotalAmount;
+        const finalAdvanceAmount = (inputAdvanceAmount !== undefined) ? parseFloat(inputAdvanceAmount) : Math.round(finalTotalAmount * 0.2);
+        const finalRemainingAmount = Math.max(0, finalTotalAmount - finalAdvanceAmount);
+
+        const customBookingId = "#SD-BK-" + Math.floor(1000 + Math.random() * 9000);
+
+        // Generate check-in QR Code Data URL
         const checkInPayload = JSON.stringify({
-            restaurantId,
+            bookingId: customBookingId,
+            restaurantId: rawRestId,
             customerName: finalCustomerName,
-            date: bookingDate,
-            time: bookingTime,
+            date: finalDate,
+            time: finalTime,
             timestamp: Date.now(),
         });
-
-        // Generate QR code Data URL
-        const qrCodeDataUrl = await QRCode.toDataURL(checkInPayload);
+        const qrCodeDataUrl = await QRCode.toDataURL(checkInPayload).catch(() => "");
 
         const booking = await Booking.create({
+            bookingId: customBookingId,
             customerName: finalCustomerName,
             customerEmail: finalCustomerEmail,
             customerPhone: finalCustomerPhone,
-            restaurant: restaurantId,
-            user: req.user ? req.user._id : null,
+            restaurant: validRestId || undefined,
+            restaurantId: String(rawRestId),
+            restaurantName: finalRestaurantName,
+            user: req.user ? req.user._id : undefined,
             bookedItems: formattedBookedItems,
+            tableId: tableId || undefined,
             tableNumber: tableNumber || "TBD",
-            guests: guests ? parseInt(guests) : 1,
-            bookingDate,
-            bookingTime,
-            totalAmount,
+            guests: guests ? parseInt(guests) : 2,
+            bookingDate: finalDate,
+            bookingTime: finalTime,
+            totalAmount: finalTotalAmount,
+            advanceAmount: finalAdvanceAmount,
+            remainingAmount: finalRemainingAmount,
             paymentStatus: "Pending",
             bookingStatus: "Confirmed",
             qrCode: qrCodeDataUrl,
         });
+
+        console.log(`✅ Table Reservation Confirmed in MongoDB: ${booking.bookingId} for ${finalCustomerName} at ${finalRestaurantName}`);
 
         res.status(201).json({
             success: true,
@@ -103,9 +147,13 @@ const createBooking = async (req, res) => {
 // @access  Public / Private
 const getBookingById = async (req, res) => {
     try {
-        const booking = await Booking.findById(req.params.id)
+        let booking = await Booking.findById(req.params.id)
             .populate("restaurant", "restaurantName address mobileNumber restaurantLogo restaurantCover")
             .populate("bookedItems.dish", "dishName dishImage price");
+
+        if (!booking) {
+            booking = await Booking.findOne({ bookingId: req.params.id });
+        }
 
         if (!booking) {
             return res.status(404).json({ success: false, message: "Booking not found" });
@@ -124,7 +172,13 @@ const getMyBookings = async (req, res) => {
     try {
         let query = {};
         if (req.user) {
-            query = { user: req.user._id };
+            query = {
+                $or: [
+                    { user: req.user._id },
+                    { customerEmail: req.user.email },
+                    { customerPhone: req.user.mobile },
+                ],
+            };
         } else if (req.query.email) {
             query = { customerEmail: req.query.email };
         } else if (req.query.phone) {
@@ -132,7 +186,7 @@ const getMyBookings = async (req, res) => {
         }
 
         const bookings = await Booking.find(query)
-            .populate("restaurant", "restaurantName restaurantLogo address mobileNumber")
+            .populate("restaurant", "restaurantName restaurantLogo address mobileNumber city")
             .sort({ createdAt: -1 });
 
         res.json({ success: true, count: bookings.length, bookings: bookings || [] });
