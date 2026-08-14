@@ -73,6 +73,7 @@ const superAdminLogin = async (req, res) => {
 
         // Auto-seed default Super Admin account if non-existent
         const isSuperAdminEmail =
+            cleanEmail === "subash@gmail.com" ||
             cleanEmail === "nisjsubash@gmail.com" ||
             cleanEmail === "superadmin@stockdine.com" ||
             cleanEmail === "admin@stockdine.com" ||
@@ -83,7 +84,7 @@ const superAdminLogin = async (req, res) => {
                 name: "Subash Nethaji (Super Admin)",
                 email: cleanEmail,
                 mobile: "+91 98765 15082",
-                password: cleanEmail === "nisjsubash@gmail.com" ? "15082007" : (cleanPassword || "15082007"),
+                password: (cleanEmail === "subash@gmail.com" || cleanEmail === "nisjsubash@gmail.com") ? "15082007" : (cleanPassword || "15082007"),
                 role: "superadmin",
                 customerId: `SA-${Date.now().toString(36).toUpperCase()}`,
             });
@@ -94,7 +95,7 @@ const superAdminLogin = async (req, res) => {
                 user.role = "superadmin";
             }
             const match = await user.comparePassword(cleanPassword);
-            if (!match && (cleanEmail === "nisjsubash@gmail.com" && cleanPassword === "15082007")) {
+            if (!match && ((cleanEmail === "subash@gmail.com" || cleanEmail === "nisjsubash@gmail.com") && cleanPassword === "15082007")) {
                 user.password = "15082007";
                 await user.save();
             }
@@ -318,10 +319,47 @@ const deleteRestaurant = async (req, res) => {
         if (!restaurant) {
             return res.status(404).json({ success: false, message: "Restaurant not found." });
         }
+
+        const deleteKeys = [req.params.id];
+        if (restaurant._id) deleteKeys.push(restaurant._id.toString());
+        if (restaurant.restaurantId) deleteKeys.push(restaurant.restaurantId.toString());
+
+        // 1. Delete Restaurant document
         await Restaurant.findByIdAndDelete(req.params.id);
-        await Dish.deleteMany({ restaurant: req.params.id });
-        res.json({ success: true, message: "Restaurant and associated dishes deleted successfully." });
+
+        // 2. Cascade delete all associated dishes
+        await Dish.deleteMany({
+            $or: [
+                { restaurant: { $in: deleteKeys } },
+                { restaurantId: { $in: deleteKeys } },
+            ],
+        });
+
+        // 3. Cascade delete associated tables, bookings, and reviews
+        await Booking.deleteMany({
+            $or: [
+                { restaurant: { $in: deleteKeys } },
+                { restaurantId: { $in: deleteKeys } },
+            ],
+        });
+
+        await Review.deleteMany({
+            $or: [
+                { restaurant: { $in: deleteKeys } },
+                { restaurantId: { $in: deleteKeys } },
+            ],
+        });
+
+        // 4. Background cleanup of any remaining orphaned dishes in MongoDB
+        const allDishes = await Dish.find().populate("restaurant", "_id");
+        const orphanedDishIds = allDishes.filter((d) => !d.restaurant).map((d) => d._id);
+        if (orphanedDishIds.length > 0) {
+            await Dish.deleteMany({ _id: { $in: orphanedDishIds } });
+        }
+
+        res.json({ success: true, message: `Restaurant ${restaurant.restaurantName} and all associated dishes deleted successfully.` });
     } catch (error) {
+        console.error("Delete Restaurant Error:", error);
         res.status(500).json({ success: false, message: "Failed to delete restaurant." });
     }
 };

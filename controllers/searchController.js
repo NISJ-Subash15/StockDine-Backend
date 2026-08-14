@@ -22,7 +22,7 @@ const searchAll = async (req, res) => {
         const regex = new RegExp(queryStr, "i");
 
         // 1. Search Dishes (Available dishes first)
-        const dishes = await Dish.find({
+        const rawDishes = await Dish.find({
             $or: [
                 { dishName: regex },
                 { description: regex },
@@ -30,7 +30,9 @@ const searchAll = async (req, res) => {
             ],
         })
             .populate("restaurant", "restaurantName restaurantId address city rating cuisine restaurantCover restaurantLogo")
-            .limit(10);
+            .limit(15);
+
+        const dishes = rawDishes.filter((d) => d.restaurant && d.restaurant._id && d.restaurant.restaurantName).slice(0, 10);
 
         // 2. Search Restaurants (Approved / Active only)
         const restaurants = await Restaurant.find({

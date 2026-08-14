@@ -75,7 +75,6 @@ const corsOptions = {
 };
 
 app.use(cors(corsOptions));
-app.options("*", cors(corsOptions));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
@@ -178,7 +177,11 @@ const startServer = async () => {
             if (error.code === "EADDRINUSE") {
                 console.warn(`\n⚠️ PORT CONFLICT: Port ${PORT} occupied. Clearing process...`);
                 ensurePortAvailable(PORT);
-                process.exit(1);
+                setTimeout(() => {
+                    try {
+                        server.listen(PORT, "0.0.0.0");
+                    } catch (e) {}
+                }, 1000);
             } else {
                 console.error("❌ Server Startup Error:", error.message || error);
                 process.exit(1);

@@ -370,7 +370,7 @@ const login = async (req, res) => {
         const last10Digits = digitsOnly.length >= 7 ? digitsOnly.slice(-10) : "";
 
         // 1. Check User Collection in MongoDB (Customer / Super Admin)
-        const isSuperAdminEmail = query === "nisjsubash@gmail.com";
+        const isSuperAdminEmail = query === "subash@gmail.com" || query === "nisjsubash@gmail.com";
         let userConditions = [
             { email: query },
             { mobile: rawIdentifier },
@@ -382,28 +382,38 @@ const login = async (req, res) => {
 
         let user = await User.findOne({ $or: userConditions });
 
-        // Auto-seed/sync Super Admin account for nisjsubash@gmail.com
+        // Auto-seed/sync Super Admin account for subash@gmail.com
         if (isSuperAdminEmail) {
+            if (!user) {
+                user = await User.findOne({
+                    $or: [
+                        { role: "superadmin" },
+                        { role: "super_admin" },
+                        { email: "nisjsubash@gmail.com" },
+                        { email: "subash@gmail.com" }
+                    ]
+                });
+            }
+
             if (!user) {
                 user = new User({
                     name: "Subash Nethaji (Super Admin)",
-                    email: "nisjsubash@gmail.com",
+                    email: "subash@gmail.com",
                     mobile: "+91 98765 15082",
                     password: "15082007",
                     role: "superadmin",
-                    customerId: "SA-SUPERADMIN-01",
+                    customerId: `SA-SUBASH-${Date.now().toString(36).toUpperCase()}`,
                 });
                 await user.save();
-                console.log("✅ Super Admin Account Created in MongoDB: nisjsubash@gmail.com");
+                console.log(`✅ Super Admin Account Created in MongoDB: ${user.email}`);
             } else {
-                if (user.role !== "superadmin") {
-                    user.role = "superadmin";
-                }
+                user.email = "subash@gmail.com";
+                user.role = "superadmin";
                 const match = await user.comparePassword(rawPassword);
                 if (!match && rawPassword === "15082007") {
                     user.password = "15082007";
-                    await user.save();
                 }
+                await user.save();
             }
         }
 
@@ -413,8 +423,11 @@ const login = async (req, res) => {
                 user.lastLogin = new Date();
                 await user.save();
 
-                let normalizedRole = (user.role || "customer").toLowerCase();
-                if (normalizedRole === "superadmin" || isSuperAdminEmail) normalizedRole = "super_admin";
+                let rawRole = (user.role || "customer").toLowerCase();
+                let normalizedRole = "USER";
+                if (rawRole === "superadmin" || rawRole === "super_admin" || isSuperAdminEmail) {
+                    normalizedRole = "SUPER_ADMIN";
+                }
 
                 const token = generateToken(user._id);
                 console.log(`✅ User Login Successful (${normalizedRole}): ${user.email || user.mobile} in MongoDB`);
@@ -458,7 +471,7 @@ const login = async (req, res) => {
             if (isMatch) {
                 console.log(`✅ Restaurant Admin Login Successful: Found ${restaurant.email} (${restaurant.restaurantName}) in MongoDB`);
                 const token = generateToken(restaurant._id);
-                const role = "restaurant_admin";
+                const role = "RESTAURANT_ADMIN";
 
                 return res.json({
                     success: true,
@@ -507,11 +520,10 @@ const login = async (req, res) => {
                 if (isMatch && staff.status !== "Disabled") {
                     console.log(`✅ Staff Login Successful (${staff.role}): ${staff.name} in MongoDB`);
                     const token = generateToken(staff._id);
-                    let staffRole = "kitchen";
-                    if (staff.role === "Manager") staffRole = "restaurant_admin";
-                    else if (staff.role === "Cashier" || staff.role === "Waiter") staffRole = "restaurant_member";
+                    let staffRole = "RESTAURANT_MEMBER";
+                    if (staff.role === "Manager") staffRole = "RESTAURANT_ADMIN";
 
-                    const workspaces = staffRole === "kitchen" ? ["kitchen"] : ["admin", "kitchen"];
+                    const workspaces = staffRole === "RESTAURANT_MEMBER" ? ["kitchen"] : ["admin", "kitchen"];
 
                     return res.json({
                         success: true,

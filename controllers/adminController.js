@@ -63,9 +63,24 @@ const deleteRestaurant = async (req, res) => {
             return res.status(404).json({ success: false, message: "Restaurant not found" });
         }
 
+        const deleteKeys = [req.params.id];
+        if (restaurant._id) deleteKeys.push(restaurant._id.toString());
+        if (restaurant.restaurantId) deleteKeys.push(restaurant.restaurantId.toString());
+
         await Restaurant.findByIdAndDelete(req.params.id);
         // Clean up dishes owned by this restaurant
-        await Dish.deleteMany({ restaurant: req.params.id });
+        await Dish.deleteMany({
+            $or: [
+                { restaurant: { $in: deleteKeys } },
+                { restaurantId: { $in: deleteKeys } },
+            ],
+        });
+        await Booking.deleteMany({
+            $or: [
+                { restaurant: { $in: deleteKeys } },
+                { restaurantId: { $in: deleteKeys } },
+            ],
+        });
 
         res.json({ success: true, message: "Restaurant and associated dishes deleted successfully" });
     } catch (error) {

@@ -110,9 +110,18 @@ const getDishes = async (req, res) => {
             query.portionsLeft = { $gt: 0 };
         }
 
-        const dishes = await Dish.find(query).populate("restaurant", "restaurantName restaurantId address city rating cuisine restaurantCover restaurantLogo");
+        const allDishes = await Dish.find(query).populate("restaurant", "restaurantName restaurantId address city rating cuisine restaurantCover restaurantLogo");
 
-        res.json({ success: true, count: dishes.length, dishes: dishes || [] });
+        // Filter out orphaned dishes (dishes whose referenced restaurant was deleted or does not exist)
+        const validDishes = allDishes.filter((d) => d.restaurant && d.restaurant._id && d.restaurant.restaurantName);
+
+        // Auto-cleanup orphaned dishes in background
+        const orphanedIds = allDishes.filter((d) => !d.restaurant || !d.restaurant._id).map((d) => d._id);
+        if (orphanedIds.length > 0) {
+            Dish.deleteMany({ _id: { $in: orphanedIds } }).catch((err) => console.error("Cleaned up orphaned dishes:", err));
+        }
+
+        res.json({ success: true, count: validDishes.length, dishes: validDishes });
     } catch (error) {
         console.error("Get Dishes Error:", error);
         res.status(500).json({ success: false, message: "Failed to fetch dishes" });
